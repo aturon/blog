@@ -2,13 +2,11 @@
 #
 # Use of `relative_permalinks` ensures post links from the index work properly.
 permalink:           pretty
-relative_permalinks: true
 
 # Setup
 title:               Aaron Turon
 tagline:
 url:                 http://aturon.github.io
-paginate:            1
 baseurl:             "/blog"
 
 # Assets
@@ -31,3 +29,5 @@ redcarpet:
 pages_list:
   Archive: '/blog/archive'
   Feed: '/blog/atom.xml'
+
+gems: [jekyll-paginate]

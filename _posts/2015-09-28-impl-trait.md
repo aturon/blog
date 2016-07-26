@@ -12,6 +12,11 @@ different ways of carrying it out.
 of getting across the high-level situation as I see it. Of course, any actual
 proposal will need to address the questions that I skip over.
 
+**Update**: I removed the "elision" terminology, which was more confusing than
+helpful. I also now mention some implementation issues for the return type
+inference proposal. And I've toned down my preference in the wrapup; I'm
+becoming less certain :)
+
 ## The original proposal
 
 This post is about a topic near-and-dear to me -- my
@@ -169,13 +174,13 @@ As @Ericson2314 astutely remarked on thread:
 > }
 > ```
 
-Here "type inference" means something akin to leaving off a type annotation
-that's required today (like the return type of a function), without any change
-to semantics; I'm going to call this **type elision**.  By contrast, "type
-abstraction" means *hiding* some information about a type from clients,
-similarly to what we often do with
-[newtypes](http://aturon.github.io/features/types/newtype.html) today. The
-original proposal coupled these two features together.
+Here "type inference" means something akin to leaving off a type
+annotation that's required today (like the return type of a function),
+without any change to semantics.  By contrast, "type abstraction"
+means *hiding* some information about a type from clients, similarly
+to what we often do with
+[newtypes](http://aturon.github.io/features/types/newtype.html)
+today. The original proposal coupled these two features together.
 
 This is going to turn out to be a central question for this blog post. *Should*
 these two aspects of the feature be treated separately or coupled? Are both
@@ -234,12 +239,12 @@ I'm going to be a bit opinionated here and lay out some design desires.
 - more ergonomic newtypes (where you don't have to forward trait impls explicitly)
 - applicable to struct definitions, not just function signatures
 
-## Option 1: type elision
+## Option 1: return type inference
 
-I'll start with the simpler design: attack only the elision aspect of the
+I'll start with the simpler design: attack only the type inference aspect of the
 original proposal, without actually hiding any details about a type from clients.
 
-The simplest way to do this would be to allow wildcards to elide types in return
+The simplest way to do this would be to allow wildcards to leave off types in return
 position:
 
 ```rust
@@ -291,13 +296,20 @@ implements `Clone` and `ExactSizeIterator` -- and client code can rely on those
 facts, despite them not being written down.
 
 On the one hand, this approach is uncomfortably implicit (since bounds can be
-left off), and it may leak information about the type that we do not intend.
+left off), and it may leak information about the type that we do not
+intend.
+
+There are also some implementation concerns -- the typechecker will need to
+check function definitions in a particular order to discover concrete types, and
+must ensure that return type inference isn't used in a cycle between
+functions. Note, however, that type inference continues to be purely local.
 
 On the other hand:
 
-- It's dead simple. There are no thorny questions about type equality, scoping
-  of type abstractions, or what `~` means in various contexts. It's just an
-  extension of elision.
+- It's dead simple from the programmer's perspective. There are no
+  thorny questions about type equality, scoping of type abstractions,
+  or what `~` means in various contexts. It's just an extension of
+  inference.
 
 - It behaves exactly like associated types today.
 
@@ -408,10 +420,10 @@ design, which I don't try to answer here:
 For now, I want to focus on the original motivation: avoiding having to fully
 name a type, while providing an interface to it.
 
-### Integrating elision
+### Integrating return type inference
 
 The other part of the `@` proposal is that, when used in function signatures,
-you can elide the type before the `@` (i.e., the concrete type being
+you can leave off the type before the `@` (i.e., the concrete type being
 abstracted):
 
 ```rust
@@ -480,9 +492,10 @@ signatures.
 
 Some benefits:
 
-- The design feels a bit more "principled" than the pure elision design: except
-  for OIBIT traits, the entire interface to a type must be written explicitly,
-  so there's no accidental leakage and everything is fully documented.
+- The design feels a bit more "principled" than the pure type inference design:
+  except for OIBIT traits, the entire interface to a type must be written
+  explicitly, so there's no accidental leakage and everything is fully
+  documented.
 
 - The use in `type` gives a lighter weight form of newtypes that doesn't require
   manually forwarding trait impls (akin to "generalized newtype deriving" from
@@ -493,10 +506,11 @@ Some benefits:
 
 Some drawbacks:
 
-- Complexity. This variant is *way* more complicated than pure elision. And it's
-  not clear that type abstraction is a feature that Rust really needs, given
-  that we already have privacy and the newtype pattern. We could provide
-  "newtype deriving" in a much simpler way to address the pain points there.
+- Complexity. This variant is *way* more complicated than pure type
+  inference. And it's not clear that type abstraction is a feature that Rust
+  really needs, given that we already have privacy and the newtype pattern. We
+  could provide "newtype deriving" in a much simpler way to address the pain
+  points there.
 
 - Verbosity. Even with aliases, the signatures involve here tend to be much more
   complicated. Of course, that's part of the point: this proposal is trying to
@@ -510,6 +524,8 @@ Some drawbacks:
 
 We absolutely need to expand Rust in this area; I stand by the design
 constraints listed here. But we managed to ship a relatively slim Rust 1.0, and
-I'd like to fight to keep the language as small as we can manage.
-In that light, I'm leaning pretty heavily toward elision here, despite its break
-from full signature explicitness.
+I'd like to fight to keep the language as small and concise as we can manage.
+
+In that light, I'm leaning somewhat toward return type inference here, despite
+its break from full signature explicitness. But I remain concerned about the
+fact that the bound is not actually all that meaningful.

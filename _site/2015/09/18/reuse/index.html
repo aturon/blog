@@ -52,7 +52,32 @@
 out of the box. This post explains how, and discusses the interaction with the
 &ldquo;virtual structs&rdquo; saga.</p>
 
-<hr>
+<h2 id="table-of-contents">Table of contents</h2>
+
+<ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#specialization-as-proposed">Specialization as proposed</a>
+
+<ul>
+<li><a href="#a-small-addendum">A small addendum</a></li>
+</ul></li>
+<li><a href="#ending-1:-the-trait-based-approach">Ending 1: the trait-based approach</a>
+
+<ul>
+<li><a href="#thin-pointers">Thin pointers</a></li>
+<li><a href="#incorporating-fields">Incorporating fields</a>
+
+<ul>
+<li><a href="#struct-composition">Struct composition</a></li>
+<li><a href="#struct-inheritance">Struct inheritance</a></li>
+<li><a href="#trait-fields">Trait fields</a></li>
+</ul></li>
+</ul></li>
+<li><a href="#ending-2:-the-enum-based-approach">Ending 2: the enum-based approach</a></li>
+<li><a href="#getting-opinionated">Getting opinionated</a></li>
+</ul>
+
+<h2 id="overview">Overview</h2>
 
 <p>I&rsquo;ve been working for a while with Niko Matsakis and Nick Cameron on another
 round of design for handling type hierarchies like those found in the DOM, in
@@ -229,13 +254,21 @@ explicitly).</p>
 <p>The details here aren&rsquo;t so important, as long as specialization supports <em>some</em>
 mechanism like this (which was always the intent).</p>
 
-<h2 id="ending-1:-the-trait-based-approach">Ending 1: the trait-based approach</h2>
+<h2 id="ending-1-the-trait-based-approach">Ending 1: the trait-based approach</h2>
 
 <p>It should already be clear that specialization has a connection to inheritance,
 because items left off of a specialized impl are inherited from the impl
 (partial or otherwise) it is specializing. As it turns out, that&rsquo;s already
 enough to code up something like traditional type hierarchies in OO
 languages. You can get pretty far!</p>
+
+<blockquote>
+<p>This general approach is, in some ways, inspired by
+<a href="https://github.com/rust-lang/rfcs/pull/250">eddyb and Kimundi&rsquo;s proposal</a>
+from last time around, but using specialization rather than a targeted feature
+for default refinement. And of course many of the fine points of the design
+here have been explored by others in the community as well.</p>
+</blockquote>
 
 <p>Here&rsquo;s an example, using a lightly simplified extract from Servo&rsquo;s DOM
 implementation.</p>
@@ -355,7 +388,9 @@ In practice that means that after the first virtual call, additional calls
 on <code>self</code> are statically-dispatched.</li>
 </ul></li>
 <li><p>Their non-virtual methods become inherent methods for the trait, DST style
-(e.g. <code>is_parent_of</code>). These are always statically-dispatched.</p></li>
+(e.g. <code>is_parent_of</code>). These are always statically-dispatched. (Note: it may
+be preferable to write these as extension traits with blanket impls, to gain
+further static dispatch through monomorphization, at a cost in code size.)</p></li>
 <li><p>Default implementations of methods can be done via &hellip; defaulted methods!</p></li>
 </ul>
 
@@ -405,7 +440,8 @@ accessors require virtual dispatch (much more expensive than a fixed offset).</l
 <li>cheap downcasting;
 
 <ul>
-<li><strong>Yes</strong>: see the <code>as_activatable</code> pattern.</li>
+<li><strong>Sort of</strong>: see the <code>as_activatable</code> pattern. But not as fast as a type tag
+check. (The latter can be encoded if we have fields, however.)</li>
 </ul></li>
 <li>thin pointers;
 
@@ -455,7 +491,7 @@ taking for granted here).</li>
 <p>So, we essentially met all but two requirements: thin pointers, and field
 access/inheritance. What&rsquo;s the simplest way we could accommodate those?</p>
 
-<h3 id="thin-pointers:-#[repr(thin)]">Thin pointers: <code>#[repr(thin)]</code></h3>
+<h3 id="thin-pointers">Thin pointers</h3>
 
 <p>Recall that today, trait objects are &ldquo;fat pointers&rdquo;: a pointer to some data, and
 a pointer to a vtable containing methods for operating on that data.</p>
@@ -731,7 +767,7 @@ likely need some way to express visibility choices. Fitting that into the
 existing syntax is not going to be easy. Whereas with struct composition or
 inheritance, it just &ldquo;falls out&rdquo; of the struct definitions.</p>
 
-<h2 id="ending-2:-the-enum-based-approach">Ending 2: the enum-based approach</h2>
+<h2 id="ending-2-the-enum-based-approach">Ending 2: the enum-based approach</h2>
 
 <p>Whew! So all of the proposals we just saw took traits as the sole source of
 dynamic dispatch and tried to close remaining gaps through slight enrichments of
@@ -750,7 +786,7 @@ and thereby get something more like inheritance.</p>
 <p>I won&rsquo;t recap the whole proposal here (it&rsquo;s worth a read in full!), but in short
 it makes enums into full-blown hierarchies, defining types at every level (and
 structs at the leaves):</p>
-<div class="highlight"><pre><code class="language-rust" data-lang="rust"><span class="kr">unsized</span> <span class="k">enum</span> <span class="n">Node</span> <span class="p">{</span>
+<div class="highlight"><pre><code class="language-rust" data-lang="rust"><span class="k">enum</span> <span class="n">Node</span> <span class="p">{</span>
   <span class="c1">// where this node is positioned after layout</span>
   <span class="n">position</span><span class="o">:</span> <span class="n">Rectangle</span><span class="p">,</span>
   <span class="p">...</span>
@@ -773,8 +809,8 @@ structs at the leaves):</p>
 <p>Given such a hierarchy, you can write:</p>
 <div class="highlight"><pre><code class="language-rust" data-lang="rust"><span class="k">fn</span> <span class="n">takes_any_node</span><span class="o">&lt;</span><span class="n">T</span><span class="o">:</span> <span class="n">Node</span><span class="o">&gt;</span><span class="p">(</span><span class="n">n</span><span class="o">:</span> <span class="o">&amp;</span><span class="n">T</span><span class="p">)</span> <span class="p">{</span> <span class="p">...</span> <span class="p">}</span>
 </code></pre></div>
-<p>That is, you can use an enum as a <em>bound</em>, which stands for &ldquo;any variant of this
-enum&rdquo;, but will be statically resolved via monomorphization.</p>
+<p>That is, you can use an enum as a <em>bound</em>, which stands for &ldquo;any type under this
+point in the hierarchy&rdquo;, but will be statically resolved via monomorphization.</p>
 
 <p>This immediately opens the door to specialization for reuse:</p>
 <div class="highlight"><pre><code class="language-rust" data-lang="rust"><span class="k">trait</span> <span class="n">ParsePlainAttribute</span> <span class="p">{</span>
@@ -883,12 +919,19 @@ haul.</p>
 with specialization.</p>
 
 <ul>
-<li><p>The first takes a minimalistic approach, adding a couple of minor (and
-independently motivated) features to traits and structs to get to our goal.</p></li>
+<li><p>The first takes a minimalistic approach, adding a couple of minor
+(and independently motivated) features to traits and structs to get to
+our goal. There are a few options for dealing with fields, in
+particular.</p></li>
 <li><p>The second combines specialization with another major set of enhancements to
 enums, which are also independently motivated, but are much more complex. It
 then adds a bit of sugar on top to tie the two together.</p></li>
 </ul>
+
+<p>The trait approach allows for open-ended hierarchies (extensible by downstream
+crates), while the enum approach is closed. On the flip side, that means that
+downcasting can be somewhat more awkward (and is a code smell) for the trait
+approach, while it&rsquo;s completely natural (just a <code>match</code>) for the enum approach.</p>
 
 <p>Initially, I was very excited about the latter, enum-centric approach, because
 the work on enum hierarchies seems like such a natural extension to Rust. But I
@@ -922,6 +965,10 @@ trait and a <code>NodeFields</code> struct. That detail could easily be hidden b
 macro, but it might also argue in favor of the more complex traits-with-fields
 variant.</p>
 
+<p>(I should mention: it&rsquo;s possible that in the long run, we&rsquo;ll want subtyping and
+not just coercions with any approach we take. But still, enum hierarchies want
+this to happen for our existing enums in a way that may require breakage.)</p>
+
 <p>If we <em>do</em> go with a struct/trait approach, I think we should carefully check
 that the design is compatible with a future expansion of enums along the lines
 Niko laid out in his post, since we may still want enum hierarchies in the long
@@ -936,6 +983,24 @@ magical proposal for &ldquo;common fields&rdquo; (which included an associated
 <aside class="related">
   <h2>Related Posts</h2>
   <ul class="related-posts">
+    
+      <li>
+        <h3>
+          <a href="/blog/2016/07/05/rfc-refinement/">
+            Refining Rust's RFCs
+            <small><time datetime="2016-07-05T00:00:00-07:00">05 Jul 2016</time></small>
+          </a>
+        </h3>
+      </li>
+    
+      <li>
+        <h3>
+          <a href="/blog/2015/09/28/impl-trait/">
+            Resurrecting impl Trait
+            <small><time datetime="2015-09-28T00:00:00-07:00">28 Sep 2015</time></small>
+          </a>
+        </h3>
+      </li>
     
       <li>
         <h3>
@@ -954,7 +1019,7 @@ magical proposal for &ldquo;common fields&rdquo; (which included an associated
 
       <footer class="footer">
         <small>
-          &copy; <time datetime="2015-09-18T09:48:02-07:00">2015</time>. All rights reserved.
+          &copy; <time datetime="2016-07-05T17:54:31-07:00">2016</time>. All rights reserved.
         </small>
       </footer>
     </div>
